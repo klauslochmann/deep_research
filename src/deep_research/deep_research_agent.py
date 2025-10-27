@@ -1,6 +1,7 @@
 
 import operator
 import time
+import sys
 from langchain.chat_models import init_chat_model
 from langgraph.types import Send
 from langchain_core.messages import (
@@ -98,7 +99,7 @@ deep_research_agent = workflow.compile()
 
 output = deep_research_agent.invoke(
     {
-        "question":"What is the vega of an option?",
+        "question": sys.argv[1],
         "search_terms": [],
         "search_results": []
         }

@@ -103,7 +103,7 @@ async def WriteFinalAnswer(state:AgentState) -> AgentState:
     reply = await llm_mini.ainvoke(prompt)
     
     state["summary"] = reply.text
-    state["iteration"] = state["iteration"] + 1
+    state["iteration"] = state.get("iteration", 0) + 1
     #print("The final summary is: " + reply.text)
     return state
 

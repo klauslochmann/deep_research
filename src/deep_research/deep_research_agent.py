@@ -36,10 +36,10 @@ class AgentState(TypedDict):
     summary: str
 
 def DeriveQuestions(state: AgentState) -> AgentState:
-    reply = llm_nano.invoke("You are a research assistant, who helps answering a question.\nBased on the question, derive search terms that you want to search online. Always return an JSON array of up to five strings.\nQuestion: " + state["question"]).text
-    
+    reply = llm_nano.invoke("You are a research assistant, who helps answering a question.\nBased on the question, derive search terms that you want to search online. Always return an JSON array of up to five strings.\nQuestion: " + state["question"])
+
     p = JsonOutputParser()
-    state["search_terms"] = p.parse(reply)
+    state["search_terms"] = p.parse(reply.text)
 
     return state
 
@@ -70,7 +70,6 @@ def GenerateSummary(state:dict) -> AgentState:
 
 
 def WriteFinalAnswer(state:AgentState) -> AgentState:
-    #print("Final Answer, based on " + str(len(state["search_summaries"])) + " summaries.")
     prompt = "Write one concise answer to the following question, using the input from below. Question: " + state["question"] + "\n\nHere the input text:\n"
     for x in state["search_summaries"]:
         prompt = prompt + x + "\n\n"
@@ -79,15 +78,12 @@ def WriteFinalAnswer(state:AgentState) -> AgentState:
     state["summary"] = reply
     return state
 
-workflow = StateGraph(
-    AgentState)
+workflow = StateGraph(AgentState)
 
 workflow.add_node("derive_questions", DeriveQuestions)
 workflow.add_node("search_online", SearchOnline)
 workflow.add_node("generate_summary", GenerateSummary)
 workflow.add_node("write_final_answer", WriteFinalAnswer)
-
-
 
 workflow.add_edge(START, "derive_questions")
 workflow.add_edge("derive_questions", "search_online")
@@ -102,7 +98,7 @@ output = deep_research_agent.invoke(
         "question": sys.argv[1],
         "search_terms": [],
         "search_results": []
-        }
+    }
     )
 
 print("The final summary is: " + output["summary"])

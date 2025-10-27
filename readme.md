@@ -8,8 +8,7 @@ source .venv/bin/activate
 uv sync
 ```
 
-##
-The the environment variables:
+## Set the environment variables:
 ```
 export OPENAI_API_KEY=<your key here>
 export TAVILY_API_KEY=<your key here>

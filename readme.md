@@ -2,15 +2,14 @@
 
 ## Setup the environment
 
-´´´
+```
 uv venv
 source .venv/bin/activate
 uv sync
-´´´
+```
 
 ## Run langgraph
 
-´´´
-langgraph dev
-´´´
-
+```
+python3 src/deep_research_agent.py
+```

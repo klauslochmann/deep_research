@@ -88,10 +88,18 @@ async def GenerateSummary(state:dict) -> AgentState:
 
 async def WriteFinalAnswer(state:AgentState) -> AgentState:
     print("Going to write final answer to the question.")
-    prompt = "Write one concise answer to the following question, using the input from below. State the used sources. If multiple sources show the same answer, then only cite the most credible one. Question: " + state["question"] + "\n\nHere the input text:\n" + "\n\n\n".join(state["search_summaries"])
-    #print(prompt)
-    for x in state["search_summaries"]:
-        prompt = prompt + x + "\n\n"
+    prompt = (
+        f"You are a research assistant. "
+        f"Based on the input of several articles, please "
+        f"write one concise answer to the following question. "
+        f"State the used sources. If multiple sources show the same answer, then only cite the most credible one. " 
+        f"Question: <question>" + state["question"] + "</question>\n"
+        f"Here the input articles: \n"
+    )
+    for article in state["search_summaries"]:
+        prompt = prompt + "<article>" + article + "</article>" + "\n"
+
+    print(prompt)
     reply = await llm_mini.ainvoke(prompt)
     
     state["summary"] = reply.text
@@ -177,15 +185,15 @@ workflow.add_edge("output_answer", END)
 
 deep_research_agent = workflow.compile()
 
-output = asyncio.run(deep_research_agent.ainvoke(
-    {
-        "question": sys.argv[1],
-        "search_terms": [],
-        "search_results": [],
-        "iteration": 0
-    }
-    ))
+#output = asyncio.run(deep_research_agent.ainvoke(
+#    {
+#        "question": sys.argv[1],
+#        "search_terms": [],
+#        "search_results": [],
+#        "iteration": 0
+#    }
+#    ))
 
-print("The final summary is: " + output["summary"])
+#print("The final summary is: " + output["summary"])
 
-deep_research_agent.get_graph().draw_mermaid_png(output_file_path="output.png")
+#deep_research_agent.get_graph().draw_mermaid_png(output_file_path="output.png")

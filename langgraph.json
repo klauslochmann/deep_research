@@ -1,7 +1,7 @@
 {
     "dockerfile_lines": [],
     "graphs": {
-      "deep research agent": "./src/deep_research/deep_research_agent.py:deep_research_agent"
+      "deep research agent": "./src/deep_research/deep_research_agent_v3.py:deep_research_agent"
     },
     "python_version": "3.11",
     "env": "./.env",

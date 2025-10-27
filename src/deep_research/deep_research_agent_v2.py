@@ -35,6 +35,8 @@ class AgentState(TypedDict):
     search_results: list[str]
     search_summaries: Annotated[list[str], operator.add]
     summary: str
+    is_sufficient: bool
+    iteration: int
 
 def DeriveQuestions(state: AgentState) -> AgentState:
 
@@ -85,17 +87,18 @@ def GenerateSummary(state:dict) -> AgentState:
 
 def WriteFinalAnswer(state:AgentState) -> AgentState:
     print("Going to write final answer to the question.")
-    prompt = "Write one concise answer to the following question, using the input from below. State the used sources. If multiple sources show the same answer, then only cite the most credible one. Question: " + state["question"] + "\n\nHere the input text:\n" + "\n\n".join(state["search_summaries"])
+    prompt = "Write one concise answer to the following question, using the input from below. State the used sources. If multiple sources show the same answer, then only cite the most credible one. Question: " + state["question"] + "\n\nHere the input text:\n" + "\n\n\n".join(state["search_summaries"])
     print(prompt)
     for x in state["search_summaries"]:
         prompt = prompt + x + "\n\n"
-    reply = llm_nano.invoke(prompt).text
+    reply = llm_mini.invoke(prompt).text
     
     state["summary"] = reply
+    state["iteration"] = state["iteration"] + 1
     print("The final summary is: " + reply)
     return state
 
-def AssessQualityOfResult(state:AgentState) -> dict:
+def AssessQualityOfResult(state:AgentState) -> AgentState:
     print("Going to assess the quality.")
     question = state["question"]
     summary = state["summary"]
@@ -118,8 +121,40 @@ def AssessQualityOfResult(state:AgentState) -> dict:
     p = JsonOutputParser()
     reply_json = p.parse(reply.text)
     print(reply_json)
-    return state
+    if reply_json["sufficient"]:
+        state["is_sufficient"] = True
+        return state
+    else:
+        state["is_sufficient"] = False
+        state["search_terms"] = reply_json["search_terms"]
+        return state
 
+def continue_after_assessment(state: AgentState):
+    print("Taking decision after the assessment")
+    if state["iteration"] >= 3:
+        return [
+            Send(
+                "output_answer", 
+                state
+            )
+        ]
+    elif state["is_sufficient"]:
+        return [
+            Send(
+                "output_answer", 
+                state
+            )
+        ]
+    else: 
+        return [
+            Send(
+                "search_online", 
+                state
+            )
+        ]
+
+def OutputAnswer(state:AgentState) -> AgentState:
+    return state
 
 workflow = StateGraph(AgentState)
 
@@ -128,14 +163,16 @@ workflow.add_node("search_online", SearchOnline)
 workflow.add_node("generate_summary", GenerateSummary)
 workflow.add_node("write_final_answer", WriteFinalAnswer)
 workflow.add_node("assess_quality", AssessQualityOfResult)
-
+workflow.add_node("output_answer", OutputAnswer)
 
 workflow.add_edge(START, "derive_questions")
 workflow.add_edge("derive_questions", "search_online")
 workflow.add_conditional_edges("search_online", continue_to_summaries, ["generate_summary"])
 workflow.add_edge("generate_summary", "write_final_answer")
 workflow.add_edge("write_final_answer", "assess_quality")
-workflow.add_edge("assess_quality", END)
+workflow.add_conditional_edges("assess_quality", continue_after_assessment, ["search_online", "output_answer"])
+workflow.add_edge("output_answer", END)
+
 
 deep_research_agent = workflow.compile()
 
@@ -143,7 +180,8 @@ output = deep_research_agent.invoke(
     {
         "question": sys.argv[1],
         "search_terms": [],
-        "search_results": []
+        "search_results": [],
+        "iteration": 0
     }
     )
 

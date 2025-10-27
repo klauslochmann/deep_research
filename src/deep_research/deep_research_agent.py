@@ -36,22 +36,35 @@ class AgentState(TypedDict):
     summary: str
 
 def DeriveQuestions(state: AgentState) -> AgentState:
+
+    print("Going to derive search terms from question.")
+
     reply = llm_nano.invoke("You are a research assistant, who helps answering a question.\nBased on the question, derive search terms that you want to search online. Always return an JSON array of up to five strings.\nQuestion: " + state["question"])
 
     p = JsonOutputParser()
     state["search_terms"] = p.parse(reply.text)
 
+    print("Determined " + str(len(state["search_terms"])) + " search terms.")
+
     return state
 
 def SearchOnline(state:AgentState) -> dict:
+    print("Going to search via Tavily")
     tavily_client = TavilyClient()
     search_results = []
+    seen_urls = set()
     for search_term in state["search_terms"]:
         search_result = tavily_client.search(search_term)
-        search_results.append(search_result["results"][0]["content"])
+        for x in search_result["results"]:
+            url = x["url"]
+            if url not in seen_urls:
+                seen_urls.add(url)
+                search_results.append("# Webpage: " + x["url"] + "\n" + x["content"] + "\n")
+    print("The search produced " + str(len(search_results)) + " search results.")
     return {"search_results": search_results}
 
 def continue_to_summaries(state: AgentState):
+    print("Going to summarize all found search results.")
     return [
         Send(
             "generate_summary", 
@@ -70,6 +83,7 @@ def GenerateSummary(state:dict) -> AgentState:
 
 
 def WriteFinalAnswer(state:AgentState) -> AgentState:
+    print("Going to write final answer to the question.")
     prompt = "Write one concise answer to the following question, using the input from below. Question: " + state["question"] + "\n\nHere the input text:\n"
     for x in state["search_summaries"]:
         prompt = prompt + x + "\n\n"

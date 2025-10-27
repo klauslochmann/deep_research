@@ -77,14 +77,14 @@ def continue_to_summaries(state: AgentState):
     ]
 
 def GenerateSummary(state:dict) -> AgentState:
-    reply = llm_nano.invoke("Answer the following question using only the input given below.\nQuestion: " + state["question"] + "\n\nHere the input text:\n" + state["result_text"]).text
+    reply = llm_nano.invoke("Answer the following question using only the input given below. State the URL of the source at the end.\nQuestion: " + state["question"] + "\n\nHere the input text:\n" + state["result_text"]).text
     
     return {"search_summaries": [reply] }
 
 
 def WriteFinalAnswer(state:AgentState) -> AgentState:
     print("Going to write final answer to the question.")
-    prompt = "Write one concise answer to the following question, using the input from below. Question: " + state["question"] + "\n\nHere the input text:\n"
+    prompt = "Write one concise answer to the following question, using the input from below. State the sources that you used. Question: " + state["question"] + "\n\nHere the input text:\n" + "\n\n".join(state["search_summaries"])
     for x in state["search_summaries"]:
         prompt = prompt + x + "\n\n"
     reply = llm_nano.invoke(prompt).text

@@ -25,6 +25,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from tavily import TavilyClient
 
 llm_nano = ChatOpenAI(model='gpt-4.1-nano')
+llm_mini = ChatOpenAI(model='gpt-4.1-mini')
 
 
 class AgentState(TypedDict):
@@ -44,7 +45,7 @@ def DeriveQuestions(state: AgentState) -> AgentState:
     p = JsonOutputParser()
     state["search_terms"] = p.parse(reply.text)
 
-    print("Determined " + str(len(state["search_terms"])) + " search terms.")
+    print("Determined search terms: " + ", ".join(state["search_terms"]))
 
     return state
 
@@ -77,20 +78,48 @@ def continue_to_summaries(state: AgentState):
     ]
 
 def GenerateSummary(state:dict) -> AgentState:
-    reply = llm_nano.invoke("Answer the following question using only the input given below.\nQuestion: " + state["question"] + "\n\nHere the input text:\n" + state["result_text"]).text
+    reply = llm_nano.invoke("Answer the following question using only the input given below. Also state the URL of the source at the end.\nQuestion: " + state["question"] + "\n\nHere the input text:\n" + state["result_text"]).text
     
     return {"search_summaries": [reply] }
 
 
 def WriteFinalAnswer(state:AgentState) -> AgentState:
     print("Going to write final answer to the question.")
-    prompt = "Write one concise answer to the following question, using the input from below. Question: " + state["question"] + "\n\nHere the input text:\n"
+    prompt = "Write one concise answer to the following question, using the input from below. State the used sources. If multiple sources show the same answer, then only cite the most credible one. Question: " + state["question"] + "\n\nHere the input text:\n" + "\n\n".join(state["search_summaries"])
+    print(prompt)
     for x in state["search_summaries"]:
         prompt = prompt + x + "\n\n"
     reply = llm_nano.invoke(prompt).text
     
     state["summary"] = reply
+    print("The final summary is: " + reply)
     return state
+
+def AssessQualityOfResult(state:AgentState) -> dict:
+    print("Going to assess the quality.")
+    question = state["question"]
+    summary = state["summary"]
+    search_terms = ", ".join(state["search_terms"])
+    prompt=(
+         f"You are a research assistant, which gives precise and short answers to a question.\n"
+         f"The user asked the question: <question>{question}</question>\n"
+         f"The answer you generated is: <answer>{summary}</answer>\n"
+         f"Please assess if the answer to the question is good enough. Return a JSON with three fields:"
+         f" * sufficient: true/false. "
+         f" * search_terms: [list of strings]. "
+         f" * reason: state why it is not sufficient. \n"
+         f"If the answer is sufficient reply with true. Otherwise reply with false and give a list of "
+         f"terms that should be used for an online search to answer the question properly. Previously the "
+         f"following terms have already been used: {search_terms}. Make sure to use different "
+         f"search term this time.")
+    print(prompt)
+    reply = llm_mini.invoke(prompt)
+
+    p = JsonOutputParser()
+    reply_json = p.parse(reply.text)
+    print(reply_json)
+    return state
+
 
 workflow = StateGraph(AgentState)
 
@@ -98,12 +127,15 @@ workflow.add_node("derive_questions", DeriveQuestions)
 workflow.add_node("search_online", SearchOnline)
 workflow.add_node("generate_summary", GenerateSummary)
 workflow.add_node("write_final_answer", WriteFinalAnswer)
+workflow.add_node("assess_quality", AssessQualityOfResult)
+
 
 workflow.add_edge(START, "derive_questions")
 workflow.add_edge("derive_questions", "search_online")
 workflow.add_conditional_edges("search_online", continue_to_summaries, ["generate_summary"])
 workflow.add_edge("generate_summary", "write_final_answer")
-workflow.add_edge("write_final_answer", END)
+workflow.add_edge("write_final_answer", "assess_quality")
+workflow.add_edge("assess_quality", END)
 
 deep_research_agent = workflow.compile()
 
@@ -116,3 +148,5 @@ output = deep_research_agent.invoke(
     )
 
 print("The final summary is: " + output["summary"])
+
+deep_research_agent.get_graph().draw_mermaid_png(output_file_path="output.png")

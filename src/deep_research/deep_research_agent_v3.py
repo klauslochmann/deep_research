@@ -39,21 +39,21 @@ class AgentState(TypedDict):
     is_sufficient: bool
     iteration: int
 
-async def DeriveQuestions(state: AgentState) -> AgentState:
+async def DeriveQuestions(state: AgentState):
 
     print("Going to derive search terms from question.")
 
     reply = await llm_nano.ainvoke("You are a research assistant, who helps answering a question.\nBased on the question, derive search terms that you want to search online. Always return an JSON array of up to five strings.\nQuestion: " + state["question"])
 
     p = JsonOutputParser()
-    state["search_terms"] = p.parse(reply.text)
+    search_terms = p.parse(reply.text)
 
-    print("Determined search terms")
+    print("Determined " + str(len(search_terms)) + " search terms")
 
-    return state
+    return { "search_terms": search_terms }
 
-def SearchOnline(state:AgentState) -> dict:
-    print("Going to search via Tavily")
+def SearchOnline(state:AgentState):
+    print("Going to search via Tavily " + str(len(state["search_terms"])))
     tavily_client = TavilyClient()
     search_results = []
     seen_urls = set()
@@ -68,7 +68,7 @@ def SearchOnline(state:AgentState) -> dict:
     return {"search_results": search_results}
 
 async def continue_to_summaries(state: AgentState):
-    print("Going to summarize all found search results.")
+    print("Going to summarize all found search results. That is producing " + str(len(state['search_results'])) + " summaries.")
     return [
         Send(
             "generate_summary", 
@@ -80,14 +80,16 @@ async def continue_to_summaries(state: AgentState):
         for result_text in state['search_results']
     ]
 
-async def GenerateSummary(state:dict) -> AgentState:
+async def GenerateSummary(state:dict):
     reply = await llm_nano.ainvoke("Answer the following question using only the input given below. Also state the URL of the source at the end.\nQuestion: " + state["question"] + "\n\nHere the input text:\n" + state["result_text"])
+
+    print("created summary")
 
     return {"search_summaries": [reply.text] }
 
 
-async def WriteFinalAnswer(state:AgentState) -> AgentState:
-    print("Going to write final answer to the question.")
+async def WriteFinalAnswer(state:AgentState):
+    print("Going to write final answer to the question, based on " + str(len(state["search_summaries"])) + " summaries.")
     prompt = (
         f"You are a research assistant. "
         f"Based on the input of several articles, please "
@@ -99,15 +101,15 @@ async def WriteFinalAnswer(state:AgentState) -> AgentState:
     for article in state["search_summaries"]:
         prompt = prompt + "<article>" + article + "</article>" + "\n"
 
-    print(prompt)
+    #print(prompt)
     reply = await llm_mini.ainvoke(prompt)
     
-    state["summary"] = reply.text
-    state["iteration"] = state.get("iteration", 0) + 1
-    #print("The final summary is: " + reply.text)
-    return state
+    summary = reply.text
+    iteration = state.get("iteration", 0) + 1
 
-async def AssessQualityOfResult(state:AgentState) -> AgentState:
+    return { "summary": summary, "iteration": iteration }
+
+async def AssessQualityOfResult(state:AgentState):
     print("Going to assess the quality.")
     question = state["question"]
     summary = state["summary"]
@@ -131,12 +133,11 @@ async def AssessQualityOfResult(state:AgentState) -> AgentState:
     reply_json = p.parse(reply.text)
     #print(reply_json)
     if reply_json["sufficient"]:
-        state["is_sufficient"] = True
-        return state
+        return { "is_sufficient": True }
+        
     else:
-        state["is_sufficient"] = False
-        state["search_terms"] = reply_json["search_terms"]
-        return state
+        return { "is_sufficient": False, "search_terms": reply_json["search_terms"] }
+        
 
 async def continue_after_assessment(state: AgentState):
     print("Taking decision after the assessment")
@@ -162,8 +163,8 @@ async def continue_after_assessment(state: AgentState):
             )
         ]
 
-async def OutputAnswer(state:AgentState) -> AgentState:
-    return state
+async def OutputAnswer(state:AgentState):
+    return {}
 
 workflow = StateGraph(AgentState)
 
@@ -185,15 +186,15 @@ workflow.add_edge("output_answer", END)
 
 deep_research_agent = workflow.compile()
 
-#output = asyncio.run(deep_research_agent.ainvoke(
-#    {
-#        "question": sys.argv[1],
-#        "search_terms": [],
-#        "search_results": [],
-#        "iteration": 0
-#    }
-#    ))
+output = asyncio.run(deep_research_agent.ainvoke(
+    {
+        "question": sys.argv[1],
+        "search_terms": [],
+        "search_results": [],
+        "iteration": 0
+    }
+    ))
 
-#print("The final summary is: " + output["summary"])
+print("The final summary is: " + output["summary"])
 
-#deep_research_agent.get_graph().draw_mermaid_png(output_file_path="output.png")
+deep_research_agent.get_graph().draw_mermaid_png(output_file_path="output.png")
